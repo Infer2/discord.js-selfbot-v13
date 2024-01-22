@@ -181,10 +181,10 @@ class Options extends null {
         capabilities: 0, // https://discord-userdoccers.vercel.app/topics/gateway#gateway-capabilities
         properties: {
           os: 'Windows',
-          browser: 'Discord Client',
+          browser: 'Discord iOS',
           release_channel: 'stable',
-          client_version: '1.0.9023',
-          os_version: '10.0.19045',
+          client_version: '212.0',
+          os_version: '17.3',
           os_arch: 'x64',
           app_arch: 'ia32',
           system_locale: 'en-US',
