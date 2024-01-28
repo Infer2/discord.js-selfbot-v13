@@ -49,7 +49,6 @@ const Intents = require('./Intents');
 /**
  * Options for a client.
  * @typedef {Object} ClientOptions
- * @property {number} [messageCreateEventGuildTimeout=100] The amount of time in milliseconds that the Client to register for messages with each guild
  * @property {number} [DMChannelVoiceStatusSync=0] The amount of time in milliseconds that the Client to register the event with each DM channel (0=Disable)
  * @property {number} [captchaRetryLimit=3] Captcha retry limit
  * @property {CaptchaSolver} [captchaSolver] Captcha Solver
@@ -90,8 +89,6 @@ const Intents = require('./Intents');
  * @property {number} [retryLimit=1] How many times to retry on 5XX errors
  * (Infinity for an indefinite amount of retries)
  * @property {boolean} [failIfNotExists=true] Default value for {@link ReplyMessageOptions#failIfNotExists}
- * @property {string[]} [userAgentSuffix] An array of additional bot info to be appended to the end of the required
- * [User Agent](https://discord.com/developers/docs/reference#user-agent) header
  * @property {PresenceData} [presence={ status: 'online', since: 0, activities: [], afk: false }] Presence data to use upon login
  * @property {number} [waitGuildTimeout=15_000] Time in milliseconds that Clients with the GUILDS intent should wait for
  * missing guilds to be received before starting the bot. If not specified, the default is 15 seconds.
@@ -154,13 +151,13 @@ class Options extends null {
    */
   static createDefault() {
     return {
-      messageCreateEventGuildTimeout: 100,
       DMChannelVoiceStatusSync: 0,
       captchaRetryLimit: 3,
       captchaSolver: () => Promise.reject(new Error('CAPTCHA_SOLVER_NOT_IMPLEMENTED')),
       closeTimeout: 5_000,
       waitGuildTimeout: 15_000,
       shardCount: 1,
+      shards: [0],
       makeCache: this.cacheWithLimits(this.defaultMakeCacheSettings),
       messageCacheLifetime: 0,
       messageSweepInterval: 0,
@@ -174,26 +171,25 @@ class Options extends null {
       restTimeOffset: 500,
       restSweepInterval: 60,
       failIfNotExists: true,
-      userAgentSuffix: [],
       presence: { status: 'online', since: 0, activities: [], afk: false },
       sweepers: {},
       ws: {
         capabilities: 0, // https://discord-userdoccers.vercel.app/topics/gateway#gateway-capabilities
         properties: {
           os: 'Windows',
-          browser: 'Discord iOS',
-          release_channel: 'stable',
-          client_version: '212.0',
-          os_version: '17.3',
-          os_arch: 'x64',
-          app_arch: 'ia32',
-          system_locale: 'en-US',
+          browser: 'Chrome',
+          device: '',
+          system_locale: 'vi-VN',
           browser_user_agent: UserAgent,
-          browser_version: '22.3.26',
-          client_build_number: 244874,
-          native_build_number: 39515,
+          browser_version: '108.0.5359.215',
+          os_version: '10',
+          referrer: '',
+          referring_domain: '',
+          referrer_current: '',
+          referring_domain_current: '',
+          release_channel: 'stable',
+          client_build_number: 261141,
           client_event_source: null,
-          design_id: 0,
         },
         compress: false,
         client_state: {
