@@ -35,23 +35,36 @@ module.exports = (client, { d: data }, shard) => {
   // Relationship
   client.relationships._setup(data.relationships);
 
+  // ClientSetting
+  client.settings._patch(data.user_settings);
+
+  // GuildSetting
+  for (const gSetting of Array.isArray(data.user_guild_settings) ? data.user_guild_settings : []) {
+    const guild = client.guilds.cache.get(gSetting.guild_id);
+    if (guild) guild.settings._patch(gSetting);
+  }
+
+  if (largeGuilds.length) {
+    client.ws.broadcast({
+      op: Opcodes.GUILD_SUBSCRIPTIONS_BULK,
+      d: {
+        subscriptions: largeGuilds.reduce((accumulator, guild) => {
+          accumulator[guild.id] = {
+            typing: true,
+            threads: true,
+            activities: true,
+            member_updates: true,
+            thread_member_lists: [],
+            members: [],
+            channels: {},
+          };
+          return accumulator;
+        }, {}),
+      },
+    });
+  }
+
   Promise.all(
-    largeGuilds.map(async (guild, index) => {
-      client.ws.broadcast({
-        op: Opcodes.GUILD_SUBSCRIPTIONS,
-        d: {
-          guild_id: guild.id,
-          typing: true,
-          threads: true,
-          activities: true,
-          thread_member_lists: [],
-          members: [],
-          channels: {},
-        },
-      });
-      client.emit('debug', `[READY] Register guild ${guild.id}`);
-      await client.sleep(client.options.messageCreateEventGuildTimeout * index);
-    }),
     data.private_channels.map(async (c, index) => {
       if (client.options.DMChannelVoiceStatusSync < 1) return;
       client.ws.broadcast({

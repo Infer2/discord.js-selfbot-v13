@@ -8,10 +8,11 @@ const BaseClient = require('./BaseClient');
 const ActionsManager = require('./actions/ActionsManager');
 const ClientVoiceManager = require('./voice/ClientVoiceManager');
 const WebSocketManager = require('./websocket/WebSocketManager');
-const { Error, TypeError, RangeError } = require('../errors');
+const { Error, TypeError } = require('../errors');
 const BaseGuildEmojiManager = require('../managers/BaseGuildEmojiManager');
 const BillingManager = require('../managers/BillingManager');
 const ChannelManager = require('../managers/ChannelManager');
+const ClientUserSettingManager = require('../managers/ClientUserSettingManager');
 const GuildManager = require('../managers/GuildManager');
 const PresenceManager = require('../managers/PresenceManager');
 const RelationshipManager = require('../managers/RelationshipManager');
@@ -31,7 +32,6 @@ const Widget = require('../structures/Widget');
 const { Events, Status } = require('../util/Constants');
 const DataResolver = require('../util/DataResolver');
 const Intents = require('../util/Intents');
-const Options = require('../util/Options');
 const Permissions = require('../util/Permissions');
 const DiscordAuthWebsocket = require('../util/RemoteAuth');
 const Sweepers = require('../util/Sweepers');
@@ -46,39 +46,6 @@ class Client extends BaseClient {
    */
   constructor(options) {
     super(options);
-
-    const data = require('node:worker_threads').workerData ?? process.env;
-    const defaults = Options.createDefault();
-
-    if (this.options.shards === defaults.shards) {
-      if ('SHARDS' in data) {
-        this.options.shards = JSON.parse(data.SHARDS);
-      }
-    }
-
-    if (this.options.shardCount === defaults.shardCount) {
-      if ('SHARD_COUNT' in data) {
-        this.options.shardCount = Number(data.SHARD_COUNT);
-      } else if (Array.isArray(this.options.shards)) {
-        this.options.shardCount = this.options.shards.length;
-      }
-    }
-
-    const typeofShards = typeof this.options.shards;
-
-    if (typeofShards === 'undefined' && typeof this.options.shardCount === 'number') {
-      this.options.shards = Array.from({ length: this.options.shardCount }, (_, i) => i);
-    }
-
-    if (typeofShards === 'number') this.options.shards = [this.options.shards];
-
-    if (Array.isArray(this.options.shards)) {
-      this.options.shards = [
-        ...new Set(
-          this.options.shards.filter(item => !isNaN(item) && item >= 0 && item < Infinity && item === (item | 0)),
-        ),
-      ];
-    }
 
     this._validateOptions();
 
@@ -187,6 +154,12 @@ class Client extends BaseClient {
      * @type {BillingManager}
      */
     this.billing = new BillingManager(this);
+
+    /**
+     * All of the settings {@link Object}
+     * @type {ClientUserSettingManager}
+     */
+    this.settings = new ClientUserSettingManager(this);
 
     Object.defineProperty(this, 'token', { writable: true });
     if (!this.token && 'DISCORD_TOKEN' in process.env) {
@@ -535,17 +508,34 @@ class Client extends BaseClient {
   }
 
   /**
+   * The current session id of the shard
+   * @type {?string}
+   */
+  get sessionId() {
+    return this.ws.shards.first()?.sessionId;
+  }
+
+  /**
+   * Options for {@link Client#acceptInvite}.
+   * @typedef {Object} AcceptInviteOptions
+   * @property {boolean} [bypassOnboarding=true] Whether to bypass onboarding
+   * @property {boolean} [bypassVerify=true] Whether to bypass rule screening
+   */
+
+  /**
    * Join this Guild using this invite
    * @param {InviteResolvable} invite Invite code or URL
-   * @returns {Promise<void>}
+   * @param {AcceptInviteOptions} [options={ bypassOnboarding: true, bypassVerify: true }] Options
+   * @returns {Promise<Guild|DMChannel|GroupDMChannel>}
    * @example
-   * await client.acceptInvite('https://discord.gg/genshinimpact')
+   * await client.acceptInvite('https://discord.gg/genshinimpact', { bypassOnboarding: true, bypassVerify: true })
    */
-  async acceptInvite(invite) {
+  async acceptInvite(invite, options = { bypassOnboarding: true, bypassVerify: true }) {
     const code = DataResolver.resolveInviteCode(invite);
     if (!code) throw new Error('INVITE_RESOLVE_CODE');
     const i = await this.fetchInvite(code);
-    if (this.guilds.cache.has(i.guild?.id)) return;
+    if (i.guild?.id && this.guilds.cache.has(i.guild?.id)) return this.guilds.cache.get(i.guild?.id);
+    if (this.channels.cache.has(i.channelId)) return this.channels.cache.get(i.channelId);
     /*
 {
   location: 'Desktop Invite Modal',
@@ -554,12 +544,73 @@ class Client extends BaseClient {
   location_channel_type: typeof i.channel.type == 'number' ? i.channel.type : ChannelTypes[i.channel.type],
 }
 */
-    await this.api.invites(code).post({
+    const data = await this.api.invites(code).post({
       DiscordContext: { location: 'Markdown Link' },
       data: {
-        session_id: this.ws.shards.first()?.sessionId,
+        session_id: this.sessionId,
       },
     });
+    this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Joined`);
+    // Guild
+    if (i.guild?.id) {
+      if (options.bypassOnboarding) {
+        const onboardingData = await this.api.guilds[i.guild?.id].onboarding.get();
+        // Onboarding
+        if (onboardingData.enabled) {
+          const prompts = onboardingData.prompts.filter(o => o.in_onboarding);
+          if (prompts.length) {
+            const onboarding_prompts_seen = {};
+            const onboarding_responses = [];
+            const onboarding_responses_seen = {};
+
+            const currentDate = Date.now();
+
+            prompts.forEach(prompt => {
+              onboarding_prompts_seen[prompt.id] = currentDate;
+              if (prompt.required) onboarding_responses.push(prompt.options[0].id);
+              prompt.options.forEach(option => {
+                onboarding_responses_seen[option.id] = currentDate;
+              });
+            });
+
+            await this.api.guilds[i.guild?.id]['onboarding-responses'].post({
+              data: {
+                onboarding_prompts_seen,
+                onboarding_responses,
+                onboarding_responses_seen,
+              },
+            });
+            this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Bypassed onboarding`);
+          }
+        }
+      }
+      // Read rule
+      if (data.show_verification_form && options.bypassVerify) {
+        // Check Guild
+        if (i.guild.verificationLevel == 'VERY_HIGH' && !this.user.phone) {
+          this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Cannot bypass verify (Phone required)`);
+          return this.guilds.cache.get(i.guild?.id);
+        }
+        if (i.guild.verificationLevel !== 'NONE' && !this.user.email) {
+          this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Cannot bypass verify (Email required)`);
+          return this.guilds.cache.get(i.guild?.id);
+        }
+        const getForm = await this.api
+          .guilds(i.guild?.id)
+          ['member-verification'].get({ query: { with_guild: false, invite_code: this.code } })
+          .catch(() => {});
+        if (getForm) {
+          const form = Object.assign(getForm.form_fields[0], { response: true });
+          await this.api
+            .guilds(i.guild?.id)
+            .requests['@me'].put({ data: { form_fields: [form], version: getForm.version } });
+          this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Bypassed verify`);
+        }
+      }
+      return this.guilds.cache.get(i.guild?.id);
+    } else {
+      return this.channels.cache.has(i.channelId);
+    }
   }
 
   /**
@@ -640,18 +691,6 @@ class Client extends BaseClient {
    * @private
    */
   _validateOptions(options = this.options) {
-    if (typeof options.intents === 'undefined') {
-      throw new TypeError('CLIENT_MISSING_INTENTS');
-    } else {
-      options.intents = Intents.resolve(options.intents);
-    }
-    if (typeof options.shardCount !== 'number' || isNaN(options.shardCount) || options.shardCount !== 1) {
-      throw new TypeError('CLIENT_INVALID_OPTION', 'shardCount', 'a number equal to 1');
-    }
-    if (options.shards && !(options.shards === 'auto' || Array.isArray(options.shards))) {
-      throw new TypeError('CLIENT_INVALID_OPTION', 'shards', "'auto', a number or array of numbers");
-    }
-    if (options.shards && !options.shards.length) throw new RangeError('CLIENT_INVALID_PROVIDED_SHARDS');
     if (typeof options.makeCache !== 'function') {
       throw new TypeError('CLIENT_INVALID_OPTION', 'makeCache', 'a function');
     }
@@ -669,9 +708,6 @@ class Client extends BaseClient {
     }
     if (!Array.isArray(options.partials)) {
       throw new TypeError('CLIENT_INVALID_OPTION', 'partials', 'an Array');
-    }
-    if (typeof options.messageCreateEventGuildTimeout !== 'number' || isNaN(options.messageCreateEventGuildTimeout)) {
-      throw new TypeError('CLIENT_INVALID_OPTION', 'messageCreateEventGuildTimeout', 'a number');
     }
     if (typeof options.DMChannelVoiceStatusSync !== 'number' || isNaN(options.DMChannelVoiceStatusSync)) {
       throw new TypeError('CLIENT_INVALID_OPTION', 'DMChannelVoiceStatusSync', 'a number');
@@ -697,15 +733,16 @@ class Client extends BaseClient {
     if (typeof options.failIfNotExists !== 'boolean') {
       throw new TypeError('CLIENT_INVALID_OPTION', 'failIfNotExists', 'a boolean');
     }
-    if (!Array.isArray(options.userAgentSuffix)) {
-      throw new TypeError('CLIENT_INVALID_OPTION', 'userAgentSuffix', 'an array of strings');
-    }
     if (
       typeof options.rejectOnRateLimit !== 'undefined' &&
       !(typeof options.rejectOnRateLimit === 'function' || Array.isArray(options.rejectOnRateLimit))
     ) {
       throw new TypeError('CLIENT_INVALID_OPTION', 'rejectOnRateLimit', 'an array or a function');
     }
+    // Hardcode
+    this.options.shardCount = 1;
+    this.options.shards = [0];
+    this.options.intents = Intents.ALL;
   }
 }
 

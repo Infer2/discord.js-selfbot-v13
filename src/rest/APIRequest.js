@@ -8,7 +8,7 @@ const makeFetchCookie = require('fetch-cookie');
 const FormData = require('form-data');
 const fetchOriginal = require('node-fetch');
 const { CookieJar } = require('tough-cookie');
-const { UserAgent } = require('../util/Constants');
+const { ciphers } = require('../util/Constants');
 
 const cookieJar = new CookieJar();
 const fetch = makeFetchCookie(fetchOriginal, cookieJar);
@@ -24,8 +24,9 @@ class APIRequest {
     this.options = options;
     this.retries = 0;
 
-    const { userAgentSuffix } = this.client.options;
-    this.fullUserAgent = `${UserAgent}${userAgentSuffix.length ? `, ${userAgentSuffix.join(', ')}` : ''}`;
+    this.fullUserAgent = this.client.options.http.headers['User-Agent'];
+
+    this.client.options.ws.properties.browser_user_agent = this.fullUserAgent;
 
     let queryString = '';
     if (options.query) {
@@ -40,10 +41,19 @@ class APIRequest {
   make(captchaKey, captchaRqToken) {
     if (!agent) {
       if (this.client.options.http.agent instanceof http.Agent) {
-        this.client.options.http.agent.keepAlive = true;
+        this.client.options.http.agent.options.keepAlive = true;
+        this.client.options.http.agent.options.honorCipherOrder = true;
+        this.client.options.http.agent.options.minVersion = 'TLSv1.2';
+        this.client.options.http.agent.options.ciphers = ciphers.join(':');
         agent = this.client.options.http.agent;
       } else {
-        agent = new https.Agent({ ...this.client.options.http.agent, keepAlive: true });
+        agent = new https.Agent({
+          ...this.client.options.http.agent,
+          keepAlive: true,
+          honorCipherOrder: true,
+          minVersion: 'TLSv1.2',
+          ciphers: ciphers.join(':'),
+        });
       }
     }
 
@@ -54,7 +64,6 @@ class APIRequest {
     const url = API + this.path;
 
     let headers = {
-      ...this.client.options.http.headers,
       authority: 'discord.com',
       accept: '*/*',
       'accept-language': 'en-US',
@@ -73,6 +82,7 @@ class APIRequest {
       Referer: 'https://discord.com/channels/@me',
       origin: 'https://discord.com',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
+      ...this.client.options.http.headers,
       'User-Agent': this.fullUserAgent,
     };
 
@@ -95,6 +105,9 @@ class APIRequest {
       headers['X-Context-Properties'] = Buffer.from(JSON.stringify(this.options.DiscordContext), 'utf8').toString(
         'base64',
       );
+    }
+    if (this.options.mfaToken) {
+      headers['X-Discord-Mfa-Authorization'] = this.options.mfaToken;
     }
 
     let body;

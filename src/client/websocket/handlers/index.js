@@ -73,6 +73,9 @@ const handlers = Object.fromEntries([
   ['CALL_CREATE', require('./CALL_CREATE')],
   ['CALL_UPDATE', require('./CALL_UPDATE')],
   ['CALL_DELETE', require('./CALL_DELETE')],
+  ['USER_SETTINGS_UPDATE', require('./USER_SETTINGS_UPDATE')],
+  ['USER_GUILD_SETTINGS_UPDATE', require('./USER_GUILD_SETTINGS_UPDATE')],
+  ['VOICE_CHANNEL_STATUS_UPDATE', require('./VOICE_CHANNEL_STATUS_UPDATE')],
 ]);
 
 module.exports = handlers;

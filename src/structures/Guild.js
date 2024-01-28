@@ -11,13 +11,13 @@ const Webhook = require('./Webhook');
 const WelcomeScreen = require('./WelcomeScreen');
 const { Error } = require('../errors');
 const AutoModerationRuleManager = require('../managers/AutoModerationRuleManager');
-const GuildApplicationCommandManager = require('../managers/GuildApplicationCommandManager');
 const GuildBanManager = require('../managers/GuildBanManager');
 const GuildChannelManager = require('../managers/GuildChannelManager');
 const GuildEmojiManager = require('../managers/GuildEmojiManager');
 const GuildInviteManager = require('../managers/GuildInviteManager');
 const GuildMemberManager = require('../managers/GuildMemberManager');
 const GuildScheduledEventManager = require('../managers/GuildScheduledEventManager');
+const GuildSettingManager = require('../managers/GuildSettingManager');
 const GuildStickerManager = require('../managers/GuildStickerManager');
 const PresenceManager = require('../managers/PresenceManager');
 const RoleManager = require('../managers/RoleManager');
@@ -57,12 +57,6 @@ const deletedGuilds = new WeakSet();
 class Guild extends AnonymousGuild {
   constructor(client, data) {
     super(client, data, false);
-
-    /**
-     * A manager of the application commands belonging to this guild
-     * @type {GuildApplicationCommandManager}
-     */
-    this.commands = new GuildApplicationCommandManager(this);
 
     /**
      * A manager of the members belonging to this guild
@@ -123,6 +117,12 @@ class Guild extends AnonymousGuild {
      * @type {AutoModerationRuleManager}
      */
     this.autoModerationRules = new AutoModerationRuleManager(this);
+
+    /**
+     * All of the settings {@link Object}
+     * @type {GuildSettingManager}
+     */
+    this.settings = new GuildSettingManager(this);
 
     if (!data) return;
     if (data.unavailable) {

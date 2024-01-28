@@ -100,6 +100,7 @@ import {
   ApplicationRoleConnectionMetadataTypes,
   RelationshipTypes,
   SelectMenuComponentTypes,
+  InviteType,
 } from './enums';
 import {
   APIApplicationRoleConnectionMetadata,
@@ -641,6 +642,7 @@ export class BaseGuildVoiceChannel extends TextBasedChannelMixin(GuildChannel, [
   public rateLimitPerUser: number | null;
   public userLimit: number;
   public videoQualityMode: VideoQualityMode | null;
+  public status?: string;
   public createInvite(options?: CreateInviteOptions): Promise<Invite>;
   public setRTCRegion(rtcRegion: string | null, reason?: string): Promise<this>;
   public fetchInvites(cache?: boolean): Promise<Collection<string, Invite>>;
@@ -788,6 +790,8 @@ export class Client<Ready extends boolean = boolean> extends BaseClient {
   public voiceStates: VoiceStateManager;
   public presences: PresenceManager;
   public billing: BillingManager;
+  public settings: ClientUserSettingManager;
+  public readonly sessionId: If<Ready, string, undefined>;
   public destroy(): void;
   public fetchGuildPreview(guild: GuildResolvable): Promise<GuildPreview>;
   public fetchInvite(invite: InviteResolvable, options?: ClientFetchInviteOptions): Promise<Invite>;
@@ -805,7 +809,10 @@ export class Client<Ready extends boolean = boolean> extends BaseClient {
   /** @deprecated Use {@link Sweepers#sweepMessages} instead */
   public sweepMessages(lifetime?: number): number;
   public toJSON(): unknown;
-  public acceptInvite(invite: InviteResolvable): Promise<void>;
+  public acceptInvite(
+    invite: InviteResolvable,
+    options?: AcceptInviteOptions,
+  ): Promise<Guild | DMChannel | GroupDMChannel>;
   public redeemNitro(nitro: string, channel?: TextChannelResolvable, paymentSourceId?: Snowflake): Promise<any>;
   public authorizeURL(url: string, options?: OAuth2AuthorizeOptions): Promise<any>;
 
@@ -832,6 +839,11 @@ export class Client<Ready extends boolean = boolean> extends BaseClient {
 
   public removeAllListeners<K extends keyof ClientEvents>(event?: K): this;
   public removeAllListeners<S extends string | symbol>(event?: Exclude<S, keyof ClientEvents>): this;
+}
+
+export interface AcceptInviteOptions {
+  bypassOnboarding: boolean;
+  bypassVerify: boolean;
 }
 
 export interface OAuth2AuthorizeOptions {
@@ -1174,7 +1186,6 @@ export class Guild extends AnonymousGuild {
   public available: boolean;
   public bans: GuildBanManager;
   public channels: GuildChannelManager;
-  public commands: GuildApplicationCommandManager;
   public defaultMessageNotifications: DefaultMessageNotificationLevel | number;
   /** @deprecated This will be removed in the next major version, see https://github.com/discordjs/discord.js/issues/7091 */
   public deleted: boolean;
@@ -1205,6 +1216,7 @@ export class Guild extends AnonymousGuild {
   public readonly safetyAlertsChannel: TextChannel | null;
   public safetyAlertsChannelId: Snowflake | null;
   public scheduledEvents: GuildScheduledEventManager;
+  public settings: GuildSettingManager;
   public readonly shard: WebSocketShard;
   public shardId: number;
   public stageInstances: StageInstanceManager;
@@ -1726,6 +1738,7 @@ export class Invite extends Base {
   public maxUses: number | null;
   public memberCount: number;
   public presenceCount: number;
+  public type: InviteType | null;
   public targetApplication: IntegrationApplication | null;
   public targetUser: User | null;
   public targetType: InviteTargetType | null;
@@ -1895,6 +1908,7 @@ export class Message<Cached extends boolean = boolean> extends Base {
   ): Promise<Message | Modal>;
   public markUnread(): Promise<void>;
   public markRead(): Promise<void>;
+  public report(breadcrumbs: number[], elements?: object): Promise<{ report_id: Snowflake }>;
 }
 
 export class CallState extends Base {
@@ -3576,6 +3590,7 @@ export const Constants: {
   TextInputStyles: EnumHolder<typeof TextInputStyles>;
   ThreadChannelTypes: ThreadChannelTypes[];
   UserAgent: string;
+  ciphers: string[];
   VerificationLevels: EnumHolder<typeof VerificationLevels>;
   VideoQualityModes: EnumHolder<typeof VideoQualityModes>;
   VoiceBasedChannelTypes: VoiceBasedChannelTypes[];
@@ -3678,8 +3693,8 @@ export class ApplicationCommandPermissionsManager<
   GuildType,
   CommandIdType,
 > extends BaseManager {
-  private constructor(manager: ApplicationCommandManager | GuildApplicationCommandManager | ApplicationCommand);
-  private manager: ApplicationCommandManager | GuildApplicationCommandManager | ApplicationCommand;
+  private constructor(manager: ApplicationCommandManager | ApplicationCommand);
+  private manager: ApplicationCommandManager | ApplicationCommand;
 
   public client: Client;
   public commandId: CommandIdType;
@@ -3767,22 +3782,132 @@ export class UserNoteManager extends BaseManager {
 
 export type FetchGuildApplicationCommandFetchOptions = Omit<FetchApplicationCommandOptions, 'guildId'>;
 
-export class GuildApplicationCommandManager extends ApplicationCommandManager<ApplicationCommand, {}, Guild> {
-  private constructor(guild: Guild, iterable?: Iterable<RawApplicationCommandData>);
-  public guild: Guild;
-  public create(command: ApplicationCommandDataResolvable): Promise<ApplicationCommand>;
-  public delete(command: ApplicationCommandResolvable): Promise<ApplicationCommand | null>;
-  public edit(
-    command: ApplicationCommandResolvable,
-    data: Partial<ApplicationCommandDataResolvable>,
-  ): Promise<ApplicationCommand>;
-  public fetch(id: Snowflake, options?: FetchGuildApplicationCommandFetchOptions): Promise<ApplicationCommand>;
-  public fetch(options: FetchGuildApplicationCommandFetchOptions): Promise<Collection<Snowflake, ApplicationCommand>>;
-  public fetch(
-    id?: undefined,
-    options?: FetchGuildApplicationCommandFetchOptions,
-  ): Promise<Collection<Snowflake, ApplicationCommand>>;
-  public set(commands: ApplicationCommandDataResolvable[]): Promise<Collection<Snowflake, ApplicationCommand>>;
+export class ClientUserSettingManager extends BaseManager {
+  private constructor(client: Client);
+  public readonly raw: RawUserSettingsData;
+  public locale?: string;
+  public activityDisplay?: boolean;
+  public allowDMsFromGuild?: boolean;
+  public displayImage?: boolean;
+  public linkedImageDisplay?: boolean;
+  public autoplayGIF?: boolean;
+  public previewLink?: boolean;
+  public animatedEmoji?: boolean;
+  public allowTTS?: boolean;
+  public compactMode?: boolean;
+  public convertEmoticons?: boolean;
+  public DMScanLevel?: 0 | 1 | 2;
+  public theme?: 'dark' | 'light';
+  public developerMode?: boolean;
+  public afkTimeout?: number;
+  public stickerAnimationMode?: 0 | 1 | 2;
+  public showEmojiReactions?: boolean;
+  public disableDMfromGuilds: Collection<Snowflake, Guild>;
+  public fetch(): Promise<this>;
+  public edit(data: Partial<RawUserSettingsData>): Promise<this>;
+  public toggleCompactMode(): Promise<this>;
+  public setTheme(value: 'dark' | 'light'): Promise<this>;
+  public setCustomStatus(value?: CustomStatusOption | CustomStatus): Promise<this>;
+  public restrictedGuilds(status: boolean): Promise<void>;
+  public addRestrictedGuild(guildId: GuildResolvable): Promise<void>;
+  public removeRestrictedGuild(guildId: GuildResolvable): Promise<void>;
+}
+
+export class GuildSettingManager extends BaseManager {
+  private constructor(guild: Guild);
+  public readonly raw?: RawGuildSettingsData;
+  public suppressEveryone?: boolean;
+  public suppressRoles?: boolean;
+  public muteScheduledEvents?: boolean;
+  public messageNotifications?: number;
+  public flags?: number;
+  public mobilePush?: boolean;
+  public muted?: boolean;
+  public muteConfig?: MuteConfigData;
+  public hideMutedChannels?: boolean;
+  public channelOverrides?: object[];
+  public notifyHighlights?: number;
+  public version?: number;
+  public guildId?: Snowflake;
+  public readonly guild?: Guild;
+  public edit(data: Partial<RawGuildSettingsData>): Promise<this>;
+}
+
+export interface CustomStatusOption {
+  text?: string | null;
+  expires_at?: string | null;
+  emoji?: EmojiIdentifierResolvable | null;
+  status?: PresenceStatusData | null;
+}
+
+// Source: https://luna.gitlab.io/discord-unofficial-docs/user_settings.html
+export interface RawUserSettingsData {
+  afk_timeout?: number;
+  allow_accessibility_detection?: boolean;
+  animate_emoji?: boolean;
+  animate_stickers?: number;
+  contact_sync_enabled?: boolean;
+  convert_emoticons?: boolean;
+  custom_status?: { text?: string; expires_at?: string | null; emoji_name?: string; emoji_id?: Snowflake | null };
+  default_guilds_restricted?: boolean;
+  detect_platform_accounts?: boolean;
+  developer_mode?: boolean;
+  disable_games_tab?: boolean;
+  enable_tts_command?: boolean;
+  explicit_content_filter?: number;
+  friend_discovery_flags?: number;
+  friend_source_flags?: { all?: boolean; mutual_friends?: boolean; mututal_guilds?: boolean };
+  gif_auto_play?: boolean;
+  guild_folders?: { id?: Snowflake; guild_ids?: Snowflake[]; name?: string }[];
+  guild_positions?: number[];
+  inline_attachment_media?: boolean;
+  inline_embed_media?: boolean;
+  locale?: string;
+  message_display_compact?: boolean;
+  native_phone_integration_enabled?: boolean;
+  render_embeds?: boolean;
+  render_reactions?: boolean;
+  restricted_guilds?: any[];
+  show_current_game?: boolean;
+  status?: PresenceStatusData;
+  stream_notifications_enabled?: boolean;
+  theme?: 'dark' | 'light';
+  timezone_offset?: number;
+  view_nsfw_guilds?: boolean;
+}
+
+export interface RawGuildSettingsData {
+  guild_id: Snowflake;
+  suppress_everyone: boolean;
+  suppress_roles: boolean;
+  mute_scheduled_events: boolean;
+  message_notifications: 2;
+  flags: 0;
+  mobile_push: boolean;
+  muted: boolean;
+  mute_config?: RawMuteConfigData;
+  hide_muted_channels: boolean;
+  channel_overrides: RawGuildChannelSettingsData[];
+  notify_highlights: number;
+  version: number;
+}
+
+export interface RawGuildChannelSettingsData {
+  channel_id: Snowflake;
+  message_notifications: number;
+  muted: boolean;
+  mute_config?: RawMuteConfigData;
+  collapsed: boolean;
+}
+
+export interface RawMuteConfigData {
+  end_time: string;
+  selected_time_window: number;
+}
+
+export interface MuteConfigData {
+  endTime: Date;
+  selectedTimeWindow: number;
 }
 
 export type MappedGuildChannelTypes = EnumValueMapped<
@@ -5130,7 +5255,6 @@ export interface ClientFetchInviteOptions {
 export type CaptchaSolver = (captcha: Captcha, UserAgent: string) => Promise<string>;
 
 export interface ClientOptions {
-  messageCreateEventGuildTimeout?: number;
   DMChannelVoiceStatusSync?: number;
   captchaRetryLimit?: number;
   captchaSolver?: CaptchaSolver;
@@ -5150,7 +5274,6 @@ export interface ClientOptions {
   restSweepInterval?: number;
   retryLimit?: number;
   failIfNotExists?: boolean;
-  userAgentSuffix?: string[];
   presence?: PresenceData;
   waitGuildTimeout?: number;
   sweepers?: SweeperOptions;
@@ -5438,6 +5561,8 @@ export interface ConstantsOpcodes {
   SPEED_TEST_DELETE: 33;
   REQUEST_LAST_MESSAGES: 34;
   SEARCH_RECENT_MEMBERS: 35;
+  REQUEST_CHANNEL_STATUSES: 36;
+  GUILD_SUBSCRIPTIONS_BULK: 37;
 }
 
 export interface ConstantsShardEvents {
@@ -6646,7 +6771,9 @@ export type PermissionString =
   | 'MANAGE_EVENTS'
   | 'VIEW_CREATOR_MONETIZATION_ANALYTICS'
   | 'USE_SOUNDBOARD'
-  | 'SEND_VOICE_MESSAGES';
+  | 'SEND_VOICE_MESSAGES'
+  | 'USE_CLYDE_AI'
+  | 'SET_VOICE_CHANNEL_STATUS';
 
 export type RecursiveArray<T> = ReadonlyArray<T | RecursiveArray<T>>;
 

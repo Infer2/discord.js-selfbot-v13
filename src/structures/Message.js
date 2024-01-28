@@ -1025,7 +1025,7 @@ class Message extends Base {
       channel_id: this.channelId,
       message_id: this.id,
       application_id: this.applicationId ?? this.author.id,
-      session_id: this.client.ws.shards.first()?.sessionId,
+      session_id: this.client.sessionId,
       message_flags: this.flags.bitfield,
       data: {
         component_type: MessageComponentTypes.BUTTON,
@@ -1124,7 +1124,7 @@ class Message extends Base {
       channel_id: this.channelId,
       message_id: this.id,
       application_id: this.applicationId ?? this.author.id,
-      session_id: this.client.ws.shards.first()?.sessionId,
+      session_id: this.client.sessionId,
       message_flags: this.flags.bitfield,
       data: {
         component_type: MessageComponentTypes[selectMenu.type],
@@ -1198,6 +1198,35 @@ class Message extends Base {
     return this.client.api.channels[this.channelId].messages[this.id].ack.post({
       data: {
         token: null,
+      },
+    });
+  }
+
+  /**
+   * Report Message
+   * @param {Arrray<number>} breadcrumbs Options for reporting
+   * @param {Object} [elements={}] Metadata
+   * @returns {Promise<{ report_id: Snowflake }>}
+   * @example
+   * // GET https://discord.com/api/v9/reporting/menu/message?variant=4
+   * // Report Category
+   * // - <hidden>MESSAGE_WELCOME (3)</hidden>
+   * // - Something else (28)
+   * // - Hacks, cheats, phishing or malicious links (72)
+   * message.report([3, 28, 72]).then(console.log);
+   * // { "report_id": "1199663489988440124" }
+   */
+  report(breadcrumbs, elements = {}) {
+    return this.client.api.reporting.message.post({
+      data: {
+        version: '1.0',
+        variant: '4',
+        language: 'en',
+        breadcrumbs,
+        elements,
+        channel_id: this.channelId,
+        message_id: this.id,
+        name: 'message',
       },
     });
   }

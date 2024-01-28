@@ -19,6 +19,7 @@ const captchaMessage = [
   'You need to update your app',
   'response-already-used-error',
   'rqkey-mismatch',
+  'sitekey-secret-mismatch',
 ];
 
 function parseResponse(res) {
@@ -354,6 +355,7 @@ class RequestHandler {
       let data;
       try {
         data = await parseResponse(res);
+        // Captcha
         if (
           data?.captcha_service &&
           typeof this.manager.client.options.captchaSolver == 'function' &&
@@ -382,6 +384,29 @@ class RequestHandler {
           );
           request.retries++;
           return this.execute(request, captcha, data.captcha_rqtoken);
+        }
+        // Two factor
+        if (data?.code && data.code == 60003 && request.options.mfaCode && request.retries < 1) {
+          this.manager.client.emit(
+            DEBUG,
+            `${data.message}
+    Method  : ${request.method}
+    Path    : ${request.path}
+    Route   : ${request.route}
+    mfaCode : ${request.options.mfaCode}`,
+          );
+          // Get ticket
+          const mfaData = data.mfa;
+          const mfaPost = await this.manager.client.api.mfa.finish.post({
+            data: {
+              ticket: mfaData.ticket,
+              data: request.options.mfaCode,
+              mfa_type: 'totp',
+            },
+          });
+          request.options.mfaToken = mfaPost.token;
+          request.retries++;
+          return this.execute(request);
         }
       } catch (err) {
         throw new HTTPError(err.message, err.constructor.name, err.status, request);
