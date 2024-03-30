@@ -278,6 +278,39 @@ class Client extends BaseClient {
   }
 
   /**
+   * Logs the client in, establishing a WebSocket connection to Discord.
+   * @param {string} email The email associated with the account
+   * @param {string} password The password assicated with the account
+   * @param {string | number} [code = null] The mfa code if you have it enabled
+   * @returns {string | null} Token of the account used
+   *
+   * @example
+   * client.passLogin("test@gmail.com", "SuperSecretPa$$word", 1234)
+   */
+  async passLogin(email, password, code = null) {
+    const initial = await this.api.auth.login.post({
+      auth: false,
+      versioned: true,
+      data: { gift_code_sku_id: null, login_source: null, undelete: false, login: email, password },
+    });
+
+    if ('token' in initial) {
+      return this.login(initial.token);
+    } else if ('ticket' in initial) {
+      const totp = await this.api.auth.mfa.totp.post({
+        auth: false,
+        versioned: true,
+        data: { gift_code_sku_id: null, login_source: null, code, ticket: initial.ticket },
+      });
+      if ('token' in totp) {
+        return this.login(totp.token);
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Returns whether the client has logged in, indicative of being able to access
    * properties such as `user` and `application`.
    * @returns {boolean}
@@ -523,9 +556,9 @@ class Client extends BaseClient {
    */
 
   /**
-   * Join this Guild using this invite
+   * Join this Guild / GroupDMChannel using this invite
    * @param {InviteResolvable} invite Invite code or URL
-   * @param {AcceptInviteOptions} [options={ bypassOnboarding: true, bypassVerify: true }] Options
+   * @param {AcceptInviteOptions} [options] Options
    * @returns {Promise<Guild|DMChannel|GroupDMChannel>}
    * @example
    * await client.acceptInvite('https://discord.gg/genshinimpact', { bypassOnboarding: true, bypassVerify: true })
@@ -553,6 +586,11 @@ class Client extends BaseClient {
     this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Joined`);
     // Guild
     if (i.guild?.id) {
+      const guild = this.guilds.cache.get(i.guild?.id);
+      if (i.flags.has('GUEST')) {
+        this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Guest invite`);
+        return guild;
+      }
       if (options.bypassOnboarding) {
         const onboardingData = await this.api.guilds[i.guild?.id].onboarding.get();
         // Onboarding
@@ -607,9 +645,9 @@ class Client extends BaseClient {
           this.emit(Events.DEBUG, `[Invite > Guild ${i.guild?.id}] Bypassed verify`);
         }
       }
-      return this.guilds.cache.get(i.guild?.id);
+      return guild;
     } else {
-      return this.channels.cache.has(i.channelId);
+      return this.channels.cache.has(i.channelId || data.channel?.id);
     }
   }
 

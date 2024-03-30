@@ -6,6 +6,7 @@ const IntegrationApplication = require('./IntegrationApplication');
 const InviteStageInstance = require('./InviteStageInstance');
 const { Error } = require('../errors');
 const { Endpoints } = require('../util/Constants');
+const InviteFlags = require('../util/InviteFlags');
 const Permissions = require('../util/Permissions');
 
 // TODO: Convert `inviter` and `channel` in this class to a getter.
@@ -192,16 +193,16 @@ class Invite extends Base {
     if ('channel_id' in data) {
       /**
        * The channel's id this invite is for
-       * @type {Snowflake}
+       * @type {?Snowflake}
        */
       this.channelId = data.channel_id;
       this.channel = this.client.channels.cache.get(data.channel_id);
     }
 
-    if ('channel' in data) {
+    if ('channel' in data && data.channel !== null) {
       /**
        * The channel this invite is for
-       * @type {Channel}
+       * @type {?Channel}
        */
       this.channel ??= this.client.channels._add(data.channel, this.guild, { cache: false });
       this.channelId ??= data.channel.id;
@@ -241,6 +242,16 @@ class Invite extends Base {
       this.guildScheduledEvent = new GuildScheduledEvent(this.client, data.guild_scheduled_event);
     } else {
       this.guildScheduledEvent ??= null;
+    }
+
+    if ('flags' in data) {
+      /**
+       * The flags that are applied to the invite.
+       * @type {?Readonly<InviteFlags>}
+       */
+      this.flags = new InviteFlags(data.flags).freeze();
+    } else {
+      this.flags ??= new InviteFlags().freeze();
     }
   }
 
