@@ -167,6 +167,11 @@ class Presence extends Base {
  * * **`desktop`**
  * * **`samsung`** - playing on Samsung Galaxy
  * * **`xbox`** - playing on Xbox Live
+ * * **`ios`**
+ * * **`android`**
+ * * **`embedded`**
+ * * **`ps4`**
+ * * **`ps5`**
  * @typedef {string} ActivityPlatform
  */
 
@@ -175,6 +180,9 @@ class Presence extends Base {
  */
 class Activity {
   constructor(presence, data) {
+    if (!(presence instanceof Presence)) {
+      throw new Error("Class constructor Activity cannot be invoked without 'presence'");
+    }
     /**
      * The presence of the Activity
      * @type {Presence}
@@ -221,12 +229,12 @@ class Activity {
       this.url = null;
     }
 
-    if ('created_at' in data) {
+    if ('created_at' in data || 'createdTimestamp' in data) {
       /**
        * Creation date of the activity
        * @type {number}
        */
-      this.createdTimestamp = data.created_at;
+      this.createdTimestamp = data.created_at || data.createdTimestamp;
     }
 
     if ('session_id' in data) {
@@ -236,7 +244,7 @@ class Activity {
        */
       this.sessionId = data.session_id;
     } else {
-      this.sessionId = null;
+      this.sessionId = this.presence.client?.sessionId;
     }
 
     if ('platform' in data) {
@@ -269,12 +277,12 @@ class Activity {
       this.timestamps = null;
     }
 
-    if ('application_id' in data) {
+    if ('application_id' in data || 'applicationId' in data) {
       /**
        * The id of the application associated with this activity
        * @type {?Snowflake}
        */
-      this.applicationId = data.application_id;
+      this.applicationId = data.application_id || data.applicationId;
     } else {
       this.applicationId = null;
     }
@@ -299,12 +307,12 @@ class Activity {
       this.state = null;
     }
 
-    if ('sync_id' in data) {
+    if ('sync_id' in data || 'syncId' in data) {
       /**
        * The Spotify song's id
        * @type {?string}
        */
-      this.syncId = data.sync_id;
+      this.syncId = data.sync_id || data.syncId;
     } else {
       this.syncId = null;
     }
@@ -404,10 +412,10 @@ class Activity {
   }
 
   toJSON(...props) {
-    return {
+    return Util.clearNullOrUndefinedObject({
       ...Util.flatten(this, ...props),
       type: typeof this.type === 'number' ? this.type : ActivityTypes[this.type],
-    };
+    });
   }
 }
 
@@ -428,42 +436,42 @@ class RichPresenceAssets {
   }
 
   _patch(assets = {}) {
-    if ('large_text' in assets) {
+    if ('large_text' in assets || 'largeText' in assets) {
       /**
        * Hover text for the large image
        * @type {?string}
        */
-      this.largeText = assets.large_text;
+      this.largeText = assets.large_text || assets.largeText;
     } else {
       this.largeText = null;
     }
 
-    if ('small_text' in assets) {
+    if ('small_text' in assets || 'smallText' in assets) {
       /**
        * Hover text for the small image
        * @type {?string}
        */
-      this.smallText = assets.small_text;
+      this.smallText = assets.small_text || assets.smallText;
     } else {
       this.smallText = null;
     }
 
-    if ('large_image' in assets) {
+    if ('large_image' in assets || 'largeImage' in assets) {
       /**
        * The large image asset's id
        * @type {?Snowflake}
        */
-      this.largeImage = assets.large_image;
+      this.largeImage = assets.large_image || assets.largeImage;
     } else {
       this.largeImage = null;
     }
 
-    if ('small_image' in assets) {
+    if ('small_image' in assets || 'smallImage' in assets) {
       /**
        * The small image asset's id
        * @type {?Snowflake}
        */
-      this.smallImage = assets.small_image;
+      this.smallImage = assets.small_image || assets.smallImage;
     } else {
       this.smallImage = null;
     }
@@ -628,6 +636,7 @@ class CustomStatus extends Activity {
    * @param {CustomStatus|CustomStatusOptions} [data={}] CustomStatus to clone or raw data
    */
   constructor(client, data = {}) {
+    if (!client) throw new Error("Class constructor CustomStatus cannot be invoked without 'client'");
     super('presence' in client ? client.presence : client, {
       name: 'Custom Status',
       type: ActivityTypes.CUSTOM,
@@ -665,7 +674,7 @@ class CustomStatus extends Activity {
     return {
       name: this.name,
       emoji: this.emoji,
-      type: this.type,
+      type: ActivityTypes.CUSTOM,
       state: this.state,
     };
   }
@@ -677,6 +686,7 @@ class RichPresence extends Activity {
    * @param {RichPresence} [data={}] RichPresence to clone or raw data
    */
   constructor(client, data = {}) {
+    if (!client) throw new Error("Class constructor RichPresence cannot be invoked without 'client'");
     super('presence' in client ? client.presence : client, { type: 0, ...data });
     this.setup(data);
   }
@@ -879,6 +889,16 @@ class RichPresence extends Activity {
   }
 
   /**
+   * The platform the activity is being played on
+   * @param {ActivityPlatform | null} platform Any platform
+   * @returns {RichPresence}
+   */
+  setPlatform(platform) {
+    this.platform = platform;
+    return this;
+  }
+
+  /**
    * Secrets for rich presence joining and spectating (send-only)
    * @param {?string} join Secrets for rich presence joining
    * @returns {RichPresence}
@@ -984,6 +1004,7 @@ class SpotifyRPC extends RichPresence {
    * @param {SpotifyRPC} [options] Options for the Spotify RPC
    */
   constructor(client, options = {}) {
+    if (!client) throw new Error("Class constructor SpotifyRPC cannot be invoked without 'client'");
     super(client, {
       name: 'Spotify',
       type: ActivityTypes.LISTENING,
@@ -1068,10 +1089,7 @@ class SpotifyRPC extends RichPresence {
   }
 
   toJSON() {
-    return {
-      ...super.toJSON({ id: false, emoji: false, platform: false, buttons: false }),
-      session_id: this.presence.client.sessionId,
-    };
+    return super.toJSON({ id: false, emoji: false, platform: false, buttons: false });
   }
 }
 

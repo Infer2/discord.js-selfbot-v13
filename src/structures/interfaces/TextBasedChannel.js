@@ -75,6 +75,7 @@ class TextBasedChannel {
    * @property {Array<(MessageActionRow|MessageActionRowOptions)>} [components]
    * Action rows containing interactive components for the message (buttons, select menus)
    * @property {MessageAttachment[]} [attachments] Attachments to send in the message
+   * @property {MessagePoll} [poll] A poll!
    */
 
   /**
@@ -186,7 +187,7 @@ class TextBasedChannel {
     return this.messages.cache.get(d.id) ?? this.messages._add(d);
   }
 
-  searchInteraction() {
+  searchInteractionFromGuildAndPrivateChannel() {
     // Support Slash / ContextMenu
     // API https://canary.discord.com/api/v9/guilds/:id/application-command-index // Guild
     //     https://canary.discord.com/api/v9/channels/:id/application-command-index // DM Channel
@@ -194,6 +195,19 @@ class TextBasedChannel {
     return this.client.api[this.guild ? 'guilds' : 'channels'][this.guild?.id || this.id][
       'application-command-index'
     ].get();
+  }
+
+  searchInteractionUserApps() {
+    return this.client.api.users['@me']['application-command-index'].get();
+  }
+
+  searchInteraction() {
+    return Promise.all([this.searchInteractionFromGuildAndPrivateChannel(), this.searchInteractionUserApps()]).then(
+      ([dataA, dataB]) => ({
+        applications: [...dataA.applications, ...dataB.applications],
+        application_commands: [...dataA.application_commands, ...dataB.application_commands],
+      }),
+    );
   }
 
   async sendSlash(botOrApplicationId, commandNameString, ...args) {
@@ -225,7 +239,9 @@ class TextBasedChannel {
     );
     // Find Command with application
     const command = filterCommand.find(command => command.application_id == application.id);
-
+    if (!command) {
+      throw new Error('INVALID_APPLICATION_COMMAND', application.id);
+    }
     args = args.flat(2);
     let optionFormat = [];
     let attachments = [];
@@ -326,27 +342,7 @@ class TextBasedChannel {
       data: body,
       usePayloadJSON: true,
     });
-    return new Promise((resolve, reject) => {
-      const timeoutMs = 5_000;
-      // Waiting for MsgCreate / ModalCreate
-      const handler = data => {
-        if (data.nonce !== nonce) return;
-        clearTimeout(timeout);
-        this.client.removeListener(Events.MESSAGE_CREATE, handler);
-        this.client.removeListener(Events.INTERACTION_MODAL_CREATE, handler);
-        this.client.decrementMaxListeners();
-        resolve(data);
-      };
-      const timeout = setTimeout(() => {
-        this.client.removeListener(Events.MESSAGE_CREATE, handler);
-        this.client.removeListener(Events.INTERACTION_MODAL_CREATE, handler);
-        this.client.decrementMaxListeners();
-        reject(new Error('INTERACTION_FAILED'));
-      }, timeoutMs).unref();
-      this.client.incrementMaxListeners();
-      this.client.on(Events.MESSAGE_CREATE, handler);
-      this.client.on(Events.INTERACTION_MODAL_CREATE, handler);
-    });
+    return Util.createPromiseInteraction(this.client, nonce, 5000);
   }
 
   /**
@@ -471,6 +467,8 @@ class TextBasedChannel {
       props.push(
         'sendSlash',
         'searchInteraction',
+        'searchInteractionFromGuildAndPrivateChannel',
+        'searchInteractionUserApps',
         'lastMessage',
         'lastPinAt',
         'sendTyping',

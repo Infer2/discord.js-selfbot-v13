@@ -11,7 +11,7 @@ client.on('ready', async () => {
   const status = new RichPresence(client)
     .setApplicationId('367827983903490050')
     .setType('PLAYING')
-    .setURL('https://www.youtube.com/watch?v=5icFcPkVzMg')
+    .setURL('https://www.youtube.com/watch?v=5icFcPkVzMg') // If you set a URL, it will automatically change to STREAMING type
     .setState('Arcade Game')
     .setName('osu!')
     .setDetails('MariannE - Yooh')
@@ -24,6 +24,7 @@ client.on('ready', async () => {
     .setAssetsLargeText('Idle')
     .setAssetsSmallImage('373370493127884800') // https://discord.com/api/v9/oauth2/applications/367827983903490050/assets
     .setAssetsSmallText('click the circles')
+    .setPlatform('desktop')
     .addButton('Beatmap', 'https://osu.ppy.sh/beatmapsets/1391659#osu/2873429');
   // Custom Status
   const custom = new CustomStatus(client).setEmoji('😋').setState('yum');

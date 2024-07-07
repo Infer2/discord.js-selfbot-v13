@@ -3,9 +3,10 @@
 const { Agent } = require('node:http');
 const { parse } = require('node:path');
 const process = require('node:process');
+const { setTimeout } = require('node:timers');
 const { Collection } = require('@discordjs/collection');
 const fetch = require('node-fetch');
-const { Colors } = require('./Constants');
+const { Colors, Events } = require('./Constants');
 const { Error: DiscordError, RangeError, TypeError } = require('../errors');
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const isObject = d => typeof d === 'object' && d !== null;
@@ -817,6 +818,68 @@ class Util extends null {
    */
   static verifyProxyAgent(object) {
     return typeof object == 'object' && object.httpAgent instanceof Agent && object.httpsAgent instanceof Agent;
+  }
+
+  static createPromiseInteraction(client, nonce, timeoutMs = 5_000, isHandlerDeferUpdate = false, parent) {
+    return new Promise((resolve, reject) => {
+      // Waiting for MsgCreate / ModalCreate
+      let dataFromInteractionSuccess;
+      let dataFromNormal;
+      const handler = data => {
+        // UnhandledPacket
+        if (isHandlerDeferUpdate && data.d?.nonce == nonce && data.t == 'INTERACTION_SUCCESS') {
+          // Interaction#deferUpdate
+          client.removeListener(Events.MESSAGE_CREATE, handler);
+          client.removeListener(Events.UNHANDLED_PACKET, handler);
+          client.removeListener(Events.INTERACTION_MODAL_CREATE, handler);
+          dataFromInteractionSuccess = parent;
+        }
+        if (data.nonce !== nonce) return;
+        clearTimeout(timeout);
+        client.removeListener(Events.MESSAGE_CREATE, handler);
+        client.removeListener(Events.INTERACTION_MODAL_CREATE, handler);
+        if (isHandlerDeferUpdate) client.removeListener(Events.UNHANDLED_PACKET, handler);
+        client.decrementMaxListeners();
+        dataFromNormal = data;
+        resolve(data);
+      };
+      const timeout = setTimeout(() => {
+        if (dataFromInteractionSuccess || dataFromNormal) {
+          resolve(dataFromNormal || dataFromInteractionSuccess);
+          return;
+        }
+        client.removeListener(Events.MESSAGE_CREATE, handler);
+        client.removeListener(Events.INTERACTION_MODAL_CREATE, handler);
+        if (isHandlerDeferUpdate) client.removeListener(Events.UNHANDLED_PACKET, handler);
+        client.decrementMaxListeners();
+        reject(new Error('INTERACTION_FAILED'));
+      }, timeoutMs).unref();
+      client.incrementMaxListeners();
+      client.on(Events.MESSAGE_CREATE, handler);
+      client.on(Events.INTERACTION_MODAL_CREATE, handler);
+      if (isHandlerDeferUpdate) client.on(Events.UNHANDLED_PACKET, handler);
+    });
+  }
+
+  static clearNullOrUndefinedObject(object) {
+    const data = {};
+    const keys = Object.keys(object);
+
+    for (const key of keys) {
+      const value = object[key];
+      if (value === undefined || value === null || (Array.isArray(value) && value.length === 0)) {
+        continue;
+      } else if (!Array.isArray(value) && typeof value === 'object') {
+        const cleanedValue = Util.clearNullOrUndefinedObject(value);
+        if (cleanedValue !== undefined) {
+          data[key] = cleanedValue;
+        }
+      } else {
+        data[key] = value;
+      }
+    }
+
+    return Object.keys(data).length > 0 ? data : undefined;
   }
 }
 

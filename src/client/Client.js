@@ -1,3 +1,4 @@
+/* eslint-disable no-unreachable */
 'use strict';
 
 const process = require('node:process');
@@ -569,14 +570,6 @@ class Client extends BaseClient {
     const i = await this.fetchInvite(code);
     if (i.guild?.id && this.guilds.cache.has(i.guild?.id)) return this.guilds.cache.get(i.guild?.id);
     if (this.channels.cache.has(i.channelId)) return this.channels.cache.get(i.channelId);
-    /*
-{
-  location: 'Desktop Invite Modal',
-  location_guild_id: i.guild?.id,
-  location_channel_id: i.channelId,
-  location_channel_type: typeof i.channel.type == 'number' ? i.channel.type : ChannelTypes[i.channel.type],
-}
-*/
     const data = await this.api.invites(code).post({
       DiscordContext: { location: 'Markdown Link' },
       data: {
@@ -637,7 +630,7 @@ class Client extends BaseClient {
           .guilds(i.guild?.id)
           ['member-verification'].get({ query: { with_guild: false, invite_code: this.code } })
           .catch(() => {});
-        if (getForm) {
+        if (getForm && getForm.form_fields[0]) {
           const form = Object.assign(getForm.form_fields[0], { response: true });
           await this.api
             .guilds(i.guild?.id)
@@ -710,6 +703,51 @@ class Client extends BaseClient {
       query: searchParams,
       data: options,
     });
+  }
+
+  /**
+   * Install User Apps
+   * @param {Snowflake} applicationId  Discord Application id
+   * @returns {Promise<void>}
+   */
+  installUserApps(applicationId) {
+    return this.api
+      .applications(applicationId)
+      .public.get({
+        query: {
+          with_guild: false,
+        },
+      })
+      .then(rawData => {
+        const installTypes = rawData.integration_types_config['1'];
+        if (installTypes) {
+          return this.api.oauth2.authorize.post({
+            query: {
+              client_id: applicationId,
+              scope: installTypes.oauth2_install_params.scopes.join(' '),
+            },
+            data: {
+              permissions: '0',
+              authorize: true,
+              integration_type: 1,
+            },
+          });
+        } else {
+          return false;
+        }
+      });
+  }
+
+  /**
+   * Deauthorize an application.
+   * @param {Snowflake} applicationId Discord Application id
+   * @returns {Promise<void>}
+   */
+  deauthorize(applicationId) {
+    return this.api.oauth2.tokens
+      .get()
+      .then(data => data.find(o => o.application.id == applicationId))
+      .then(o => this.api.oauth2.tokens(o.id).delete());
   }
 
   /**

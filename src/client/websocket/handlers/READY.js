@@ -9,6 +9,9 @@ module.exports = (client, { d: data }, shard) => {
   // Check
   USER_REQUIRED_ACTION(client, { d: data });
 
+  // Overwrite ClientPresence
+  client.presence.userId = data.user.id;
+
   if (client.user) {
     client.user._patch(data.user);
   } else {
@@ -26,9 +29,6 @@ module.exports = (client, { d: data }, shard) => {
     client.guilds._add(guild);
   }
 
-  const largeGuilds = data.guilds.filter(g => g.large);
-  client.emit('debug', `[READY] Received ${data.guilds.length} guilds, ${largeGuilds.length} large guilds`);
-
   // User Notes
   client.notes._reload(data.notes);
 
@@ -45,24 +45,64 @@ module.exports = (client, { d: data }, shard) => {
   }
   // Todo: data.auth_session_id_hash
 
-  if (largeGuilds.length) {
-    client.ws.broadcast({
-      op: Opcodes.GUILD_SUBSCRIPTIONS_BULK,
-      d: {
-        subscriptions: largeGuilds.reduce((accumulator, guild) => {
-          accumulator[guild.id] = {
-            typing: true,
-            threads: true,
-            activities: true,
-            member_updates: true,
-            thread_member_lists: [],
-            members: [],
-            channels: {},
-          };
-          return accumulator;
-        }, {}),
-      },
-    });
+  if (data.guilds.length) {
+    if (data.guilds.length > 80) {
+      // Split data bc 15kb
+      const data1 = data.guilds.slice(0, Math.floor(data.guilds.length / 2));
+      const data2 = data.guilds.slice(Math.floor(data.guilds.length / 2));
+      client.ws.broadcast({
+        op: Opcodes.GUILD_SUBSCRIPTIONS_BULK,
+        d: {
+          subscriptions: data1.reduce((accumulator, guild) => {
+            accumulator[guild.id] = {
+              typing: true,
+              threads: true,
+              activities: true,
+              member_updates: true,
+              thread_member_lists: [],
+              members: [],
+              channels: {},
+            };
+            return accumulator;
+          }, {}),
+        },
+      });
+      client.ws.broadcast({
+        op: Opcodes.GUILD_SUBSCRIPTIONS_BULK,
+        d: {
+          subscriptions: data2.reduce((accumulator, guild) => {
+            accumulator[guild.id] = {
+              typing: true,
+              threads: true,
+              activities: true,
+              member_updates: true,
+              thread_member_lists: [],
+              members: [],
+              channels: {},
+            };
+            return accumulator;
+          }, {}),
+        },
+      });
+    } else {
+      client.ws.broadcast({
+        op: Opcodes.GUILD_SUBSCRIPTIONS_BULK,
+        d: {
+          subscriptions: data.guilds.reduce((accumulator, guild) => {
+            accumulator[guild.id] = {
+              typing: true,
+              threads: true,
+              activities: true,
+              member_updates: true,
+              thread_member_lists: [],
+              members: [],
+              channels: {},
+            };
+            return accumulator;
+          }, {}),
+        },
+      });
+    }
   }
 
   Promise.all(
