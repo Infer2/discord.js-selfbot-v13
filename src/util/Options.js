@@ -176,13 +176,13 @@ class Options extends null {
       ws: {
         capabilities: 0, // https://discord-userdoccers.vercel.app/topics/gateway#gateway-capabilities
         properties: {
-          os: 'iOS',
-          browser: 'Discord iOS',
-          device: 'iPhone 15 Pro',
+          os: 'Android',
+          browser: 'Discord Android',
+          device: 'Galaxy Z Flip5',
           system_locale: 'my-MM',
           browser_user_agent: UserAgent,
-          browser_version: '213.1',
-          os_version: '17.3',
+          browser_version: '238.5',
+          os_version: '14',
           referrer: '',
           referring_domain: '',
           referrer_current: '',
